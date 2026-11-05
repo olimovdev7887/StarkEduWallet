@@ -2,7 +2,7 @@
 
 import { useAppStore } from "@/store";
 import { motion, AnimatePresence } from "framer-motion";
-import { Users, Shield, ShoppingBag, Trash2, UserPlus, X, Mail, Lock, User as UserIcon, Check, GraduationCap, Loader2 } from "lucide-react";
+import { Users, Shield, Trash2, UserPlus, X, Mail, Lock, User as UserIcon, Check, Loader2 } from "lucide-react";
 import { Role } from "@/types";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -18,7 +18,6 @@ export default function UsersPage() {
   const router = useRouter();
 
   const isCallerMarkedAdmin = currentUser?.isPromotedAdmin && !currentUser?.isSuperAdmin;
-  const isCallerSuperAdmin = currentUser?.isSuperAdmin === true;
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newName, setNewName] = useState("");

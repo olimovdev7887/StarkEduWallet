@@ -23,7 +23,7 @@ function LoginForm() {
   const [successMessage, setSuccessMessage] = useState("");
   const [btnPosition, setBtnPosition] = useState({ x: 0, y: 0 });
   const buttonRef = useRef<HTMLDivElement>(null);
-  
+
   const login = useAppStore((state) => state.login);
   const register = useAppStore((state) => state.register);
   const syncWithDatabase = useAppStore((state) => state.syncWithDatabase);
@@ -43,15 +43,15 @@ function LoginForm() {
     ? fullName.trim() !== "" && email.trim() !== "" && password.length >= 4 && password === confirmPassword
     : email.trim() !== "" && password.trim() !== "";
 
-  useEffect(() => {
+  const [prevShouldRegister, setPrevShouldRegister] = useState(shouldRegister);
+  if (prevShouldRegister !== shouldRegister) {
+    setPrevShouldRegister(shouldRegister);
     setIsRegistering(shouldRegister);
-  }, [shouldRegister]);
+  }
 
-  useEffect(() => {
-    if (isFormValid) {
-      setBtnPosition({ x: 0, y: 0 });
-    }
-  }, [isFormValid]);
+  if (isFormValid && (btnPosition.x !== 0 || btnPosition.y !== 0)) {
+    setBtnPosition({ x: 0, y: 0 });
+  }
 
   useEffect(() => {
     if (_hasHydrated && currentUser) {
@@ -95,12 +95,6 @@ function LoginForm() {
       const filtered = directions.filter(d => d.x !== btnPosition.x || d.y !== btnPosition.y);
       const nextDir = filtered[Math.floor(Math.random() * filtered.length)];
       setBtnPosition(nextDir);
-    }
-  };
-
-  const handleButtonReturn = () => {
-    if (!isFormValid) {
-      setBtnPosition({ x: 0, y: 0 });
     }
   };
 
@@ -182,7 +176,7 @@ function LoginForm() {
         className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-indigo-200/30 rounded-full blur-3xl pointer-events-none"
       />
 
-      <motion.div 
+      <motion.div
         layout
         initial={{ opacity: 0, y: 20, scale: 0.96 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -190,7 +184,7 @@ function LoginForm() {
         className="glass p-6 sm:p-8 rounded-3xl shadow-2xl w-full max-w-md border border-white/60 relative z-10"
       >
         <div className="flex justify-center mb-6 sm:mb-8">
-          <motion.div 
+          <motion.div
             whileHover={{ scale: 1.1, rotate: 5 }}
             whileTap={{ scale: 0.95 }}
             className="bg-stark-600 p-3.5 rounded-2xl shadow-lg shadow-stark-500/30 cursor-pointer"
@@ -198,7 +192,7 @@ function LoginForm() {
             <BookOpen className="text-white w-7 h-7 sm:w-8 sm:h-8" />
           </motion.div>
         </div>
-        
+
         <h2 className="text-2xl sm:text-3xl font-extrabold text-center text-slate-900 mb-2">
           {isRegistering ? "Create Account" : "Welcome Back"}
         </h2>
@@ -293,13 +287,12 @@ function LoginForm() {
                     type={showConfirmPassword ? "text" : "password"}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className={`w-full pl-11 pr-12 py-2.5 sm:py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-stark-500 focus:border-transparent transition-all bg-slate-50 focus:bg-white text-sm sm:text-base ${
-                      confirmPassword && password !== confirmPassword
+                    className={`w-full pl-11 pr-12 py-2.5 sm:py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-stark-500 focus:border-transparent transition-all bg-slate-50 focus:bg-white text-sm sm:text-base ${confirmPassword && password !== confirmPassword
                         ? 'border-red-300 bg-red-50'
                         : confirmPassword && password === confirmPassword
-                        ? 'border-emerald-300 bg-emerald-50/30'
-                        : 'border-slate-200'
-                    }`}
+                          ? 'border-emerald-300 bg-emerald-50/30'
+                          : 'border-slate-200'
+                      }`}
                     placeholder="••••••••"
                     required={isRegistering}
                   />
@@ -325,9 +318,9 @@ function LoginForm() {
           </AnimatePresence>
 
           {error && (
-            <motion.div 
-              initial={{ opacity: 0, y: -10 }} 
-              animate={{ opacity: 1, y: 0 }} 
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
               className="bg-stark-50 text-stark-600 p-3 rounded-xl flex items-center gap-2 text-sm font-medium border border-stark-100"
             >
               <AlertCircle className="w-5 h-5 flex-shrink-0" />
@@ -336,9 +329,9 @@ function LoginForm() {
           )}
 
           {successMessage && (
-            <motion.div 
-              initial={{ opacity: 0, y: -10 }} 
-              animate={{ opacity: 1, y: 0 }} 
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
               className="bg-emerald-50 text-emerald-600 p-3 rounded-xl flex items-center gap-2 text-sm font-medium border border-emerald-100"
             >
               <CheckCircle className="w-5 h-5 flex-shrink-0" />
@@ -346,7 +339,7 @@ function LoginForm() {
             </motion.div>
           )}
 
-          <div 
+          <div
             ref={buttonRef}
             className="relative pt-2 z-50"
           >
@@ -360,9 +353,8 @@ function LoginForm() {
               whileHover={isFormValid ? { scale: 1.02, y: -1 } : {}}
               whileTap={isFormValid ? { scale: 0.98 } : {}}
               type="submit"
-              className={`w-full bg-stark-600 text-white font-bold py-3 sm:py-3.5 rounded-xl shadow-lg shadow-stark-500/25 text-sm sm:text-base cursor-pointer select-none ${
-                !isFormValid ? "opacity-90 cursor-not-allowed" : "hover:bg-stark-700 transition-colors"
-              }`}
+              className={`w-full bg-stark-600 text-white font-bold py-3 sm:py-3.5 rounded-xl shadow-lg shadow-stark-500/25 text-sm sm:text-base cursor-pointer select-none ${!isFormValid ? "opacity-90 cursor-not-allowed" : "hover:bg-stark-700 transition-colors"
+                }`}
             >
               {isRegistering ? "Sign Up" : "Sign In"}
             </motion.button>
@@ -371,7 +363,7 @@ function LoginForm() {
 
         <div className="mt-6 sm:mt-8 text-center text-sm text-slate-500">
           {isRegistering ? "Already have an account?" : "Don't have an account?"}{" "}
-          <button 
+          <button
             onClick={toggleMode}
             className="text-stark-600 font-bold hover:underline cursor-pointer bg-transparent border-none p-0"
           >

@@ -6,37 +6,33 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
+import type { User } from "@/types";
 
-export default function Sidebar() {
-  const currentUser = useAppStore(state => state.currentUser);
-  const users = useAppStore(state => state.users);
-  const logout = useAppStore(state => state.logout);
-  const pathname = usePathname();
-  const router = useRouter();
-  const [mobileOpen, setMobileOpen] = useState(false);
+interface MenuItem {
+  name: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  roles: string[];
+}
 
-  const pendingSellersCount = currentUser?.role === 'admin'
-    ? users.filter(u => u.status === 'pending' || u.isApproved === false).length
-    : 0;
+interface NavContentProps {
+  visibleItems: MenuItem[];
+  pathname: string;
+  pendingSellersCount: number;
+  currentUser: User | null;
+  onCloseMobile: () => void;
+  onLogout: () => void;
+}
 
-  const handleLogout = () => {
-    logout();
-    router.push("/login");
-  };
-
-  const menuItems = [
-    { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["admin", "seller"] },
-    { name: "Inventory", href: "/dashboard/inventory", icon: Package, roles: ["admin", "seller"] },
-    { name: "Categories", href: "/dashboard/categories", icon: FolderOpen, roles: ["admin", "seller"] },
-    { name: "Sales History", href: "/dashboard/sales", icon: History, roles: ["admin", "seller"] },
-    { name: "Cart (1 Year)", href: "/dashboard/cart", icon: Archive, roles: ["admin", "seller"] },
-    { name: "Wallet", href: "/dashboard/wallet", icon: Wallet, roles: ["admin", "seller"] },
-    { name: "Users", href: "/dashboard/users", icon: Users, roles: ["admin"] },
-  ];
-
-  const visibleItems = menuItems.filter(item => currentUser && item.roles.includes(currentUser.role));
-
-  const NavContent = () => (
+function NavContent({
+  visibleItems,
+  pathname,
+  pendingSellersCount,
+  currentUser,
+  onCloseMobile,
+  onLogout,
+}: NavContentProps) {
+  return (
     <>
       <div className="p-6 border-b border-slate-100">
         <div className="flex items-center gap-3">
@@ -55,7 +51,7 @@ export default function Sidebar() {
           const isActive = pathname === item.href;
           const showBadge = item.name === "Users" && pendingSellersCount > 0;
           return (
-            <Link key={item.name} href={item.href} className="block" onClick={() => setMobileOpen(false)}>
+            <Link key={item.name} href={item.href} className="block" onClick={onCloseMobile}>
               <motion.div 
                 whileHover={{ x: 3 }}
                 whileTap={{ scale: 0.98 }}
@@ -106,7 +102,7 @@ export default function Sidebar() {
         <motion.button
           whileHover={{ scale: 1.01, x: 2 }}
           whileTap={{ scale: 0.98 }}
-          onClick={handleLogout}
+          onClick={onLogout}
           className="w-full flex items-center gap-3 px-4 py-3 text-slate-500 hover:text-stark-600 hover:bg-stark-50 rounded-xl transition-colors font-medium cursor-pointer"
         >
           <LogOut className="w-5 h-5" />
@@ -115,6 +111,36 @@ export default function Sidebar() {
       </div>
     </>
   );
+}
+
+export default function Sidebar() {
+  const currentUser = useAppStore(state => state.currentUser);
+  const users = useAppStore(state => state.users);
+  const logout = useAppStore(state => state.logout);
+  const pathname = usePathname();
+  const router = useRouter();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const pendingSellersCount = currentUser?.role === 'admin'
+    ? users.filter(u => u.status === 'pending' || u.isApproved === false).length
+    : 0;
+
+  const handleLogout = () => {
+    logout();
+    router.push("/login");
+  };
+
+  const menuItems: MenuItem[] = [
+    { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["admin", "seller"] },
+    { name: "Inventory", href: "/dashboard/inventory", icon: Package, roles: ["admin", "seller"] },
+    { name: "Categories", href: "/dashboard/categories", icon: FolderOpen, roles: ["admin", "seller"] },
+    { name: "Sales History", href: "/dashboard/sales", icon: History, roles: ["admin", "seller"] },
+    { name: "Cart (1 Year)", href: "/dashboard/cart", icon: Archive, roles: ["admin", "seller"] },
+    { name: "Wallet", href: "/dashboard/wallet", icon: Wallet, roles: ["admin", "seller"] },
+    { name: "Users", href: "/dashboard/users", icon: Users, roles: ["admin"] },
+  ];
+
+  const visibleItems = menuItems.filter(item => currentUser && item.roles.includes(currentUser.role));
 
   return (
     <>
@@ -152,7 +178,14 @@ export default function Sidebar() {
               transition={{ type: "spring", stiffness: 400, damping: 35 }}
               className="lg:hidden fixed top-0 left-0 bottom-0 z-50 w-72 bg-white shadow-2xl flex flex-col"
             >
-              <NavContent />
+              <NavContent
+                visibleItems={visibleItems}
+                pathname={pathname}
+                pendingSellersCount={pendingSellersCount}
+                currentUser={currentUser}
+                onCloseMobile={() => setMobileOpen(false)}
+                onLogout={handleLogout}
+              />
             </motion.div>
           </>
         )}
@@ -160,7 +193,14 @@ export default function Sidebar() {
 
       {/* Desktop Sidebar */}
       <div className="hidden lg:flex w-64 bg-white border-r border-slate-100 flex-col h-full sticky top-0">
-        <NavContent />
+        <NavContent
+          visibleItems={visibleItems}
+          pathname={pathname}
+          pendingSellersCount={pendingSellersCount}
+          currentUser={currentUser}
+          onCloseMobile={() => setMobileOpen(false)}
+          onLogout={handleLogout}
+        />
       </div>
     </>
   );

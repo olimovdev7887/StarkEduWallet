@@ -3,7 +3,7 @@
 import { useAppStore } from "@/store";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Trash2, BookOpen, X, FolderOpen, ChevronDown, ChevronUp, Check, ShoppingCart } from "lucide-react";
+import { Plus, Trash2, BookOpen, X, FolderOpen, ChevronDown, ChevronUp, Check } from "lucide-react";
 
 export default function CategoriesPage() {
   const currentUser = useAppStore(state => state.currentUser);
@@ -272,11 +272,10 @@ export default function CategoriesPage() {
                             addBookToCategory(addBookModal, book.id);
                           }
                         }}
-                        className={`w-full flex items-center justify-between p-3.5 rounded-xl border-2 transition-all text-left ${
-                          isInCat
+                        className={`w-full flex items-center justify-between p-3.5 rounded-xl border-2 transition-all text-left ${isInCat
                             ? 'border-violet-500 bg-violet-50'
                             : 'border-slate-100 hover:border-slate-200 bg-white'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center gap-2.5">
                           <BookOpen className={`w-4 h-4 ${isInCat ? 'text-violet-600' : 'text-slate-400'}`} />

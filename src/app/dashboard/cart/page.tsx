@@ -8,9 +8,7 @@ import {
   ChevronDown,
   ChevronUp,
   ShoppingBag,
-  BookOpen,
   AlertCircle,
-  DollarSign,
   CalendarDays,
   TrendingUp,
   Receipt,
@@ -141,13 +139,12 @@ function EntryCard({ entry, books }: { entry: CartEntry; books: { id: string; na
                           <div className="text-right">
                             <p className="font-bold text-slate-900">{s.total_price.toLocaleString()} UZS</p>
                             <span
-                              className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                                s.status === "paid"
+                              className={`text-xs font-semibold px-2 py-0.5 rounded-full ${s.status === "paid"
                                   ? "bg-emerald-100 text-emerald-700"
                                   : s.status === "cash_out"
-                                  ? "bg-slate-200 text-slate-600"
-                                  : "bg-amber-100 text-amber-700"
-                              }`}
+                                    ? "bg-slate-200 text-slate-600"
+                                    : "bg-amber-100 text-amber-700"
+                                }`}
                             >
                               {s.status.toUpperCase()}
                             </span>
@@ -201,11 +198,10 @@ function EntryCard({ entry, books }: { entry: CartEntry; books: { id: string; na
                         <div className="text-right">
                           <p className="font-bold text-amber-900">{d.amount.toLocaleString()} UZS</p>
                           <span
-                            className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                              d.status === "cleared"
+                            className={`text-xs font-semibold px-2 py-0.5 rounded-full ${d.status === "cleared"
                                 ? "bg-emerald-100 text-emerald-700"
                                 : "bg-amber-100 text-amber-700"
-                            }`}
+                              }`}
                           >
                             {d.status.toUpperCase()}
                           </span>

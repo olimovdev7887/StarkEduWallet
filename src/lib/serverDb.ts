@@ -1,8 +1,41 @@
 import fs from 'fs';
 import path from 'path';
-import { User, AppMessage, Role, RegistrationStatus } from '@/types';
+import {
+  User,
+  AppMessage,
+  Role,
+  RegistrationStatus,
+  Book,
+  InventoryItem,
+  Wallet,
+  SalesHistory,
+  PurchaseHistory,
+  Debt,
+  Category,
+  MonthlyCart
+} from '@/types';
 
-const dbPath = path.join(process.cwd(), 'database.json');
+export function getDbFilePath(): string {
+  const localPath = path.join(process.cwd(), 'database.json');
+  const tmpPath = path.join('/tmp', 'database.json');
+
+  if (process.env.VERCEL) {
+    if (fs.existsSync(tmpPath)) {
+      return tmpPath;
+    }
+    if (fs.existsSync(localPath)) {
+      try {
+        fs.copyFileSync(localPath, tmpPath);
+        return tmpPath;
+      } catch {
+        return localPath;
+      }
+    }
+    return tmpPath;
+  }
+
+  return localPath;
+}
 
 export const SUPER_ADMIN_SEEDS: User[] = [
   {
@@ -29,16 +62,16 @@ export const SUPER_ADMIN_SEEDS: User[] = [
 
 export interface DbAppState {
   users: User[];
-  books: any[];
-  inventory: any[];
-  wallet: any;
-  salesHistory: any[];
-  purchaseHistory: any[];
-  debts: any[];
-  categories: any[];
+  books: Book[];
+  inventory: InventoryItem[];
+  wallet: Wallet;
+  salesHistory: SalesHistory[];
+  purchaseHistory: PurchaseHistory[];
+  debts: Debt[];
+  categories: Category[];
   activeSessions: string[];
   lastResetDate: string;
-  cart: any;
+  cart: MonthlyCart;
   messages: AppMessage[];
 }
 
@@ -61,11 +94,12 @@ export function getAllAdminEmails(users: User[] = []): string[] {
   return Array.from(emails);
 }
 
-export function getRawDatabase(): Record<string, any> {
+export function getRawDatabase(): Record<string, unknown> {
+  const filePath = getDbFilePath();
   try {
-    if (fs.existsSync(dbPath)) {
-      const content = fs.readFileSync(dbPath, 'utf-8');
-      return JSON.parse(content);
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      return JSON.parse(content) as Record<string, unknown>;
     }
   } catch (error) {
     console.error('Error reading raw database.json:', error);
@@ -75,13 +109,15 @@ export function getRawDatabase(): Record<string, any> {
 
 export function getDbState(): DbAppState {
   const raw = getRawDatabase();
-  const storageStr = raw['stark-edu-wallet-storage'];
-  let parsedState: any = null;
+  const storageStr = typeof raw['stark-edu-wallet-storage'] === 'string'
+    ? (raw['stark-edu-wallet-storage'] as string)
+    : undefined;
+  let parsedState: Partial<DbAppState> | null = null;
 
   if (storageStr) {
     try {
-      const parsed = JSON.parse(storageStr);
-      parsedState = parsed.state || parsed;
+      const parsed = JSON.parse(storageStr) as { state?: Partial<DbAppState> };
+      parsedState = parsed.state || (parsed as unknown as Partial<DbAppState>);
     } catch (e) {
       console.error('Error parsing stark-edu-wallet-storage:', e);
     }
@@ -111,7 +147,7 @@ export function getDbState(): DbAppState {
 
   // Normalize messages
   let existingMessages: AppMessage[] = parsedState?.messages || [];
-  
+
   // Ensure every pending user has an active registration notification targeted at both admin IDs
   const pendingUsers = normalizedUsers.filter((u) => u.status === 'pending');
   for (const pendingUser of pendingUsers) {
@@ -194,8 +230,19 @@ export function saveDbState(state: DbAppState): boolean {
       state,
       version: 0,
     });
-    fs.writeFileSync(dbPath, JSON.stringify(raw, null, 2), 'utf-8');
-    return true;
+    const targetPath = getDbFilePath();
+    try {
+      fs.writeFileSync(targetPath, JSON.stringify(raw, null, 2), 'utf-8');
+      return true;
+    } catch (writeError: unknown) {
+      const err = writeError as { code?: string };
+      if (err.code === 'EROFS' || process.env.VERCEL) {
+        const tmpPath = path.join('/tmp', 'database.json');
+        fs.writeFileSync(tmpPath, JSON.stringify(raw, null, 2), 'utf-8');
+        return true;
+      }
+      throw writeError;
+    }
   } catch (error) {
     console.error('Error saving database state to database.json:', error);
     return false;

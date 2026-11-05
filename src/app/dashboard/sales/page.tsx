@@ -5,7 +5,7 @@ import { CartEntry } from "@/types";
 import {
   History, CheckCircle, Clock, Search, RefreshCw,
   Archive, ChevronDown, ChevronUp, CalendarDays,
-  TrendingUp, AlertCircle, Receipt, Trash2,
+  TrendingUp, AlertCircle, Trash2,
 } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";

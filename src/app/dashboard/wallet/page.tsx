@@ -14,7 +14,6 @@ export default function WalletPage() {
   const cashOut = useAppStore(state => state.cashOut);
   const clearWalletBalance = useAppStore(state => state.clearWalletBalance);
   const clearPurchaseHistory = useAppStore(state => state.clearPurchaseHistory);
-  const payStudentDebt = useAppStore(state => state.payStudentDebt);
   const payBookCosts = useAppStore(state => state.payBookCosts);
 
   const isAdmin = currentUser?.role === 'admin';
@@ -23,7 +22,6 @@ export default function WalletPage() {
   const [isCashOutModalOpen, setIsCashOutModalOpen] = useState(false);
   const [cashOutAmount, setCashOutAmount] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isPayingDebt, setIsPayingDebt] = useState(false);
   const [isPayBookCostsModalOpen, setIsPayBookCostsModalOpen] = useState(false);
   const [payBookCostsAmount, setPayBookCostsAmount] = useState("");
 
@@ -48,19 +46,6 @@ export default function WalletPage() {
       setIsCashOutModalOpen(false);
       setCashOutAmount("");
     }
-  };
-
-  const handlePayStudentDebt = () => {
-    if (!isAdmin) return;
-    if (wallet.total_debt <= 0) return;
-    if (wallet.balance < wallet.total_debt) {
-      if (!window.confirm(`Wallet balance (${wallet.balance.toLocaleString()} UZS) is less than student debt (${wallet.total_debt.toLocaleString()} UZS). Pay partial amount?`)) return;
-    } else {
-      if (!window.confirm(`Pay all student debt (${wallet.total_debt.toLocaleString()} UZS) from wallet balance?`)) return;
-    }
-    setIsPayingDebt(true);
-    payStudentDebt();
-    setTimeout(() => setIsPayingDebt(false), 600);
   };
 
   const handlePayBookCostsSubmit = (e: React.FormEvent) => {

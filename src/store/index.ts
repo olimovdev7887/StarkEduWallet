@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
-import { User, Book, InventoryItem, Wallet, SalesHistory, PurchaseHistory, Debt, Role, Category, CartEntry, MonthlyCart, AppMessage, RegistrationStatus, NotificationStatus } from '../types';
+import { User, Book, InventoryItem, Wallet, SalesHistory, PurchaseHistory, Debt, Role, Category, CartEntry, MonthlyCart, AppMessage, RegistrationStatus } from '../types';
 
 interface AppState {
   currentUser: User | null;
@@ -80,17 +80,18 @@ let isSyncingState = false;
 // ── Shared DB storage (for app data, NOT for currentUser) ──────────────────
 const apiStorage: StateStorage = {
   getItem: async (name): Promise<string | null> => {
+    if (typeof window === 'undefined') return null;
     try {
       const response = await fetch('/api/db?key=' + name, { cache: 'no-store' });
       if (!response.ok) return null;
       const data = await response.json();
       return data.value;
-    } catch (e) {
+    } catch {
       return null;
     }
   },
   setItem: async (name, value): Promise<void> => {
-    if (isSyncingState) return;
+    if (typeof window === 'undefined' || isSyncingState) return;
     try {
       await fetch('/api/db', {
         method: 'POST',
@@ -102,6 +103,7 @@ const apiStorage: StateStorage = {
     }
   },
   removeItem: async (name): Promise<void> => {
+    if (typeof window === 'undefined') return;
     try {
       await fetch('/api/db', {
         method: 'POST',
@@ -145,7 +147,7 @@ const getLocalCurrentUser = (): User | null => {
   try {
     const data = localStorage.getItem('stark_current_user');
     return data ? JSON.parse(data) : null;
-  } catch (e) {
+  } catch {
     return null;
   }
 };
@@ -691,33 +693,33 @@ export const useAppStore = create<AppState>()(
             const updatedBooks = state.books.map((b) =>
               b.id === bookId
                 ? {
-                    ...b,
-                    purchase_price: newBookData.purchase_price > 0 ? newBookData.purchase_price : b.purchase_price,
-                    sale_price: newBookData.sale_price > 0 ? newBookData.sale_price : b.sale_price,
-                  }
+                  ...b,
+                  purchase_price: newBookData.purchase_price > 0 ? newBookData.purchase_price : b.purchase_price,
+                  sale_price: newBookData.sale_price > 0 ? newBookData.sale_price : b.sale_price,
+                }
                 : b
             );
 
             const hasInv = state.inventory.some((inv) => inv.book_id === bookId);
             const updatedInventory = hasInv
               ? state.inventory.map((inv) =>
-                  inv.book_id === bookId
-                    ? {
-                        ...inv,
-                        quantity: inv.quantity + quantity,
-                        last_updated: new Date().toISOString(),
-                      }
-                    : inv
-                )
-              : [
-                  ...state.inventory,
-                  {
-                    id: Math.random().toString(36).substr(2, 9),
-                    book_id: bookId,
-                    quantity,
+                inv.book_id === bookId
+                  ? {
+                    ...inv,
+                    quantity: inv.quantity + quantity,
                     last_updated: new Date().toISOString(),
-                  },
-                ];
+                  }
+                  : inv
+              )
+              : [
+                ...state.inventory,
+                {
+                  id: Math.random().toString(36).substr(2, 9),
+                  book_id: bookId,
+                  quantity,
+                  last_updated: new Date().toISOString(),
+                },
+              ];
 
             return {
               books: updatedBooks,
@@ -932,13 +934,13 @@ export const useAppStore = create<AppState>()(
         const currentWallet = get().wallet;
         if (amount <= 0 || amount > currentWallet.purchase_cost) return;
 
-        set((state) => ({
+        set({
           wallet: {
             ...currentWallet,
             balance: currentWallet.balance - amount,
             purchase_cost: Math.max(0, currentWallet.purchase_cost - amount),
           }
-        }));
+        });
       },
 
       cashOut: (amount, description) => {
@@ -1041,7 +1043,7 @@ export const useAppStore = create<AppState>()(
         oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
         const hasData = salesHistory.length > 0 || purchaseHistory.length > 0 || debts.length > 0;
-        let prevEntries = cart?.entries ? [...cart.entries] : [];
+        const prevEntries = cart?.entries ? [...cart.entries] : [];
 
         if (hasData) {
           const newEntry: CartEntry = {
@@ -1328,7 +1330,7 @@ export const useAppStore = create<AppState>()(
               (state.purchaseHistory || []).length > 0 ||
               (state.debts || []).length > 0;
 
-            let nextEntries = [...prevEntries];
+            const nextEntries = [...prevEntries];
 
             if (hasData) {
               const newEntry: CartEntry = {

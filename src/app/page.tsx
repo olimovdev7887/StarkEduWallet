@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ArrowRight, BookOpen, Wallet, Users, Shield, TrendingUp } from "lucide-react";
+import { ArrowRight, BookOpen, Wallet, Users } from "lucide-react";
 import Link from "next/link";
 
 export default function Home() {
