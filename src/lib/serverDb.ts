@@ -73,6 +73,7 @@ export interface DbAppState {
   lastResetDate: string;
   cart: MonthlyCart;
   messages: AppMessage[];
+  deletedUserIds?: string[];
 }
 
 export function getAllAdminIds(users: User[] = []): string[] {
@@ -124,13 +125,16 @@ export function getDbState(): DbAppState {
   }
 
   const existingUsers: User[] = parsedState?.users || [];
+  const deletedUserIds: string[] = Array.isArray(parsedState?.deletedUserIds) ? parsedState.deletedUserIds : [];
+  const deletedSet = new Set(deletedUserIds);
 
   // Normalize users: ensure super admin seeds exist and all users have status & isApproved
+  // Exclude any deleted users (except strictly protected admin seed)
   const seedIds = new Set(SUPER_ADMIN_SEEDS.map((s) => s.id));
-  const nonSeedUsers = existingUsers.filter((u) => !seedIds.has(u.id));
+  const nonSeedUsers = existingUsers.filter((u) => !seedIds.has(u.id) && !deletedSet.has(u.id));
 
   const normalizedUsers: User[] = [
-    ...SUPER_ADMIN_SEEDS,
+    ...SUPER_ADMIN_SEEDS.filter((s) => s.email.toLowerCase() === 'admin@stark.edu' || !deletedSet.has(s.id)),
     ...nonSeedUsers.map((u) => {
       const status: RegistrationStatus =
         u.status || (u.isApproved === false ? 'pending' : 'approved');
@@ -220,6 +224,7 @@ export function getDbState(): DbAppState {
     lastResetDate: parsedState?.lastResetDate || '',
     cart: parsedState?.cart || { entries: [] },
     messages: existingMessages,
+    deletedUserIds,
   };
 }
 
@@ -395,5 +400,57 @@ export function handleRegistrationActionInDb(
     user: targetUser,
     notification: updatedNotif,
     alreadyHandled: false,
+  };
+}
+
+export function deleteUserFromDb(
+  userId: string,
+  callerId?: string
+): { success: boolean; error?: string; user?: User } {
+  const state = getDbState();
+  const targetUser = state.users.find((u) => u.id === userId);
+
+  if (!targetUser) {
+    return { success: false, error: 'User not found' };
+  }
+
+  // Protected account (admin@stark.edu) cannot be deleted
+  if (targetUser.email?.toLowerCase() === 'admin@stark.edu') {
+    return { success: false, error: 'Protected account (admin@stark.edu) cannot be deleted.' };
+  }
+
+  // Currently logged-in user cannot delete themselves
+  if (callerId && userId === callerId) {
+    return { success: false, error: 'You cannot delete your own account.' };
+  }
+
+  // Add to deletedUserIds so this user is permanently expunged and never re-added
+  const deletedSet = new Set(state.deletedUserIds || []);
+  deletedSet.add(userId);
+  state.deletedUserIds = Array.from(deletedSet);
+
+  // Remove user completely from state users
+  state.users = state.users.filter((u) => u.id !== userId);
+
+  // Remove from activeSessions
+  if (targetUser.email) {
+    const targetEmail = targetUser.email.toLowerCase();
+    state.activeSessions = (state.activeSessions || []).filter(
+      (email) => email.toLowerCase() !== targetEmail
+    );
+  }
+
+  // Remove any messages or notifications related to this user
+  state.messages = (state.messages || []).filter(
+    (m) =>
+      m.userId !== userId &&
+      (!targetUser.email || m.senderEmail?.toLowerCase() !== targetUser.email.toLowerCase())
+  );
+
+  const saved = saveDbState(state);
+  return {
+    success: saved,
+    user: targetUser,
+    error: saved ? undefined : 'Failed to save changes to persistent storage.',
   };
 }

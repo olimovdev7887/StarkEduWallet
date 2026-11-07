@@ -137,6 +137,8 @@ function LoginForm() {
         setError("Your account is pending approval by creator@stark.edu or admin@stark.edu. Please try again later.");
       } else if (status === 'rejected') {
         setError("Your registration request was dismissed by an admin. Please contact support or register with another email.");
+      } else if (status === 'not_found') {
+        setError("No account found with these credentials.");
       } else {
         setError("Invalid email or password.");
       }

@@ -2,9 +2,9 @@
 
 import { useAppStore } from "@/store";
 import { motion, AnimatePresence } from "framer-motion";
-import { Users, Shield, Trash2, UserPlus, X, Mail, Lock, User as UserIcon, Check, Loader2 } from "lucide-react";
-import { Role } from "@/types";
-import { useState } from "react";
+import { Users, Shield, Trash2, UserPlus, X, Mail, Lock, User as UserIcon, Check, Loader2, CheckCircle, AlertCircle } from "lucide-react";
+import { Role, User } from "@/types";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 export default function UsersPage() {
@@ -26,6 +26,49 @@ export default function UsersPage() {
   const [newRole, setNewRole] = useState<Role>("seller");
   const [error, setError] = useState("");
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
+  const handleDeleteUser = async (targetUser: User) => {
+    if (deletingId) return;
+
+    // Requirement 1 & 3: Confirmation dialog with exact text requested
+    const confirmed = window.confirm("Are you sure you want to delete this user?");
+    if (!confirmed) return;
+
+    console.log("Admin initiated permanent deletion for user id:", targetUser.id, targetUser.name);
+    setDeletingId(targetUser.id);
+
+    try {
+      const result = await deleteUser(targetUser.id);
+      if (result.success) {
+        setToast({
+          type: 'success',
+          message: `User "${targetUser.name}" has been permanently deleted.`,
+        });
+      } else {
+        setToast({
+          type: 'error',
+          message: result.error || `Failed to delete user "${targetUser.name}".`,
+        });
+      }
+    } catch (err) {
+      console.error("Delete user exception:", err);
+      setToast({
+        type: 'error',
+        message: `An unexpected error occurred while deleting user "${targetUser.name}".`,
+      });
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const pendingUsers = users.filter(u => u.status === 'pending' || u.isApproved === false);
 
@@ -87,7 +130,37 @@ export default function UsersPage() {
   };
 
   return (
-    <div>
+    <div className="relative">
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className={`fixed top-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-xl border text-sm font-semibold backdrop-blur-md ${
+              toast.type === 'success'
+                ? 'bg-emerald-50/95 border-emerald-200 text-emerald-800 shadow-emerald-500/10'
+                : 'bg-red-50/95 border-red-200 text-red-800 shadow-red-500/10'
+            }`}
+          >
+            {toast.type === 'success' ? (
+              <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
+            )}
+            <span>{toast.message}</span>
+            <button
+              onClick={() => setToast(null)}
+              className="ml-2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div className="flex items-center gap-4">
           <div className="bg-indigo-600 p-3 rounded-2xl shadow-md shadow-indigo-500/20">
@@ -179,11 +252,12 @@ export default function UsersPage() {
         className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5"
       >
         {users.map((user) => {
-          const isTargetSuperAdmin = user.isSuperAdmin === true;
-          const isPending = user.isApproved === false;
+          const isProtected = user.email.toLowerCase() === 'admin@stark.edu';
+          const isSelf = user.id === currentUser?.id;
+          const isPending = user.isApproved === false || user.status === 'pending';
 
-          const canDelete = !isCallerMarkedAdmin && !isTargetSuperAdmin;
-          const canChangeRole = !isCallerMarkedAdmin && !isTargetSuperAdmin;
+          const canDelete = currentUser?.role === 'admin' && !isProtected && !isSelf;
+          const canChangeRole = currentUser?.role === 'admin' && !isProtected && !isSelf && !isPending && !isCallerMarkedAdmin;
 
           return (
             <motion.div
@@ -217,7 +291,7 @@ export default function UsersPage() {
                 {isPending && (
                   <span className="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded-full animate-pulse">Pending</span>
                 )}
-                {user.isSuperAdmin && user.id !== currentUser?.id && (
+                {isProtected && user.id !== currentUser?.id && (
                   <span className="text-xs font-bold bg-indigo-50 text-indigo-500 px-2 py-1 rounded-full">Protected</span>
                 )}
               </div>
@@ -249,13 +323,27 @@ export default function UsersPage() {
                         >
                           <X className="w-3 h-3" /> Dismiss
                         </button>
+                        {canDelete && (
+                          <button
+                            onClick={() => handleDeleteUser(user)}
+                            disabled={deletingId === user.id}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 cursor-pointer"
+                            title={`Delete ${user.name}`}
+                          >
+                            {deletingId === user.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin text-red-600" />
+                            ) : (
+                              <Trash2 className="w-4 h-4" />
+                            )}
+                          </button>
+                        )}
                       </>
                     ) : (
                       <>
                         {canChangeRole ? (
                           <button
                             onClick={() => updateUserRole(user.id, user.role === "admin" ? "seller" : "admin")}
-                            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
                           >
                             {user.role === "admin" ? "Make Seller" : "Make Admin"}
                           </button>
@@ -263,30 +351,31 @@ export default function UsersPage() {
                           <button
                             disabled
                             className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-50 text-slate-400 cursor-not-allowed"
-                            title="Marked admins cannot change user roles"
+                            title={isCallerMarkedAdmin ? "Marked admins cannot change user roles" : "Role cannot be changed"}
                           >
                             {user.role === "admin" ? "Make Seller" : "Make Admin"}
                           </button>
                         )}
                         {canDelete ? (
                           <button
-                            onClick={() => {
-                              if (window.confirm(`Delete user ${user.name}? This cannot be undone.`)) {
-                                deleteUser(user.id);
-                              }
-                            }}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-stark-600 hover:bg-stark-50 transition-colors"
-                            title="Delete User"
+                            onClick={() => handleDeleteUser(user)}
+                            disabled={deletingId === user.id}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 cursor-pointer"
+                            title={`Delete ${user.name}`}
                           >
-                            <Trash2 className="w-4 h-4" />
+                            {deletingId === user.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin text-red-600" />
+                            ) : (
+                              <Trash2 className="w-4 h-4" />
+                            )}
                           </button>
                         ) : (
                           <button
                             disabled
-                            className="p-1.5 rounded-lg text-slate-300 cursor-not-allowed"
-                            title="Marked admins cannot delete users"
+                            className="p-1.5 rounded-lg text-slate-200 cursor-not-allowed"
+                            title={isProtected ? "Protected account cannot be deleted" : "Account cannot be deleted"}
                           >
-                            <Trash2 className="w-4 h-4 opacity-50" />
+                            <Trash2 className="w-4 h-4 opacity-40" />
                           </button>
                         )}
                       </>

@@ -27,13 +27,13 @@ interface AppState {
   clearAllMessages: () => void;
 
   // Auth Actions
-  login: (email: string, password?: string) => Promise<'success' | 'pending' | 'rejected' | 'invalid'>;
+  login: (email: string, password?: string) => Promise<'success' | 'pending' | 'rejected' | 'not_found' | 'invalid'>;
   loginById: (userId: string) => void;
   register: (name: string, email: string, password?: string, role?: Role) => Promise<'approved' | 'pending' | 'exists'>;
   logout: () => void;
 
   // User Management (Admin)
-  deleteUser: (userId: string) => void;
+  deleteUser: (userId: string) => Promise<{ success: boolean; error?: string }>;
   updateUserRole: (userId: string, newRole: Role) => void;
   approveUser: (userId: string, notificationId?: string) => Promise<void>;
   rejectUser: (userId: string, notificationId?: string) => Promise<void>;
@@ -69,6 +69,10 @@ interface AppState {
 
   // Live Cross-Device Sync
   syncWithDatabase: () => Promise<{ newPendingUsers: User[] }>;
+
+  // Access Revoked state (for force logout when account is expunged)
+  isAccessRevoked: boolean;
+  setAccessRevoked: (revoked: boolean) => void;
 
   // Hydration state
   _hasHydrated: boolean;
@@ -266,6 +270,8 @@ export const useAppStore = create<AppState>()(
       lastResetDate: '',
       cart: { month: '', entries: [] },
       messages: [],
+      isAccessRevoked: false,
+      setAccessRevoked: (revoked) => set({ isAccessRevoked: revoked }),
       _hasHydrated: false,
 
       setHasHydrated: (state) => set({ _hasHydrated: state }),
@@ -296,8 +302,9 @@ export const useAppStore = create<AppState>()(
           console.error("Login DB pre-sync error:", e);
         }
 
-        const user = get().users.find((u) => u.email === email);
-        if (!user) return 'invalid';
+        const normalizedEmail = email.trim().toLowerCase();
+        const user = get().users.find((u) => u.email.toLowerCase() === normalizedEmail);
+        if (!user) return 'not_found';
 
         // Always require exact password match
         if (user.password !== password) return 'invalid';
@@ -314,14 +321,15 @@ export const useAppStore = create<AppState>()(
 
         // Register this session and set current user
         const activeSessions = get().activeSessions;
-        const nextSessions = activeSessions.includes(email)
+        const nextSessions = activeSessions.includes(user.email)
           ? activeSessions
-          : [...activeSessions, email];
+          : [...activeSessions, user.email];
 
         setLocalCurrentUser(user);
         set({
           currentUser: user,
           activeSessions: nextSessions,
+          isAccessRevoked: false,
         });
         return 'success';
       },
@@ -489,25 +497,111 @@ export const useAppStore = create<AppState>()(
       },
 
       // ── User Management ────────────────────────────────
-      deleteUser: (userId) => {
+      deleteUser: async (userId: string) => {
         const caller = get().currentUser;
-        const target = get().users.find(u => u.id === userId);
+        const target = get().users.find((u) => u.id === userId);
 
-        // Cannot delete super-admin accounts
-        if (target?.isSuperAdmin) {
-          console.warn("Super-admin accounts cannot be deleted.");
-          return;
+        if (!target) {
+          return { success: false, error: 'User not found' };
         }
 
-        // Promoted (marked) admins cannot delete anyone else
-        if (caller?.role === 'admin' && caller?.isPromotedAdmin && !caller?.isSuperAdmin) {
-          console.warn("Marked admin cannot delete users");
-          return;
+        // The "Protected" account (admin@stark.edu) must NOT be deletable
+        if (target.email?.toLowerCase() === 'admin@stark.edu') {
+          console.warn("Protected account (admin@stark.edu) cannot be deleted.");
+          return { success: false, error: 'The protected account (admin@stark.edu) cannot be deleted.' };
         }
 
-        set((state) => ({
-          users: state.users.filter(u => u.id !== userId),
-        }));
+        // Currently logged-in user ("You") must NOT be deletable
+        if (caller && caller.id === userId) {
+          console.warn("You cannot delete your own account.");
+          return { success: false, error: 'You cannot delete your own account.' };
+        }
+
+        // Only admins can delete users
+        if (caller?.role !== 'admin') {
+          return { success: false, error: 'Only administrators have permission to delete users.' };
+        }
+
+        // Optimistically update the UI instantly without waiting
+        const previousUsers = get().users;
+        const nextUsers = previousUsers.filter((u) => u.id !== userId);
+        const targetEmail = target.email?.toLowerCase();
+        const nextSessions = targetEmail
+          ? get().activeSessions.filter((s) => s.toLowerCase() !== targetEmail)
+          : get().activeSessions;
+        const nextMessages = get().messages.filter(
+          (m) => m.userId !== userId && (!targetEmail || m.senderEmail?.toLowerCase() !== targetEmail)
+        );
+
+        set({
+          users: nextUsers,
+          activeSessions: nextSessions,
+          messages: nextMessages,
+        });
+
+        try {
+          // Permanently remove from server storage via API
+          const res = await fetch(
+            `/api/admin/users?userId=${encodeURIComponent(userId)}&callerId=${encodeURIComponent(caller?.id || '')}`,
+            {
+              method: 'DELETE',
+              headers: {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-store, no-cache',
+              },
+            }
+          );
+
+          const data = await res.json().catch(() => ({}));
+
+          if (!res.ok || !data.success) {
+            // Rollback optimistic state if server failed
+            set({ users: previousUsers });
+            return { success: false, error: data.error || 'Server rejected user deletion.' };
+          }
+
+          // Also force write to /api/db with deletedUserIds so stale clients can never restore it
+          const currentState = get();
+          const partializeData = {
+            users: nextUsers,
+            books: currentState.books,
+            inventory: currentState.inventory,
+            wallet: currentState.wallet,
+            salesHistory: currentState.salesHistory,
+            purchaseHistory: currentState.purchaseHistory,
+            debts: currentState.debts,
+            categories: currentState.categories,
+            activeSessions: nextSessions,
+            lastResetDate: currentState.lastResetDate,
+            cart: currentState.cart,
+            messages: nextMessages,
+            deletedUserIds: [userId],
+          };
+
+          await fetch('/api/db', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              key: 'stark-edu-wallet-storage',
+              value: JSON.stringify({ state: partializeData, version: 0 }),
+            }),
+          }).catch(() => {});
+
+          return { success: true };
+        } catch (err) {
+          console.error("deleteUser network error:", err);
+          // Try fallback directly to /api/db
+          try {
+            const fallbackRes = await fetch(`/api/db?userId=${encodeURIComponent(userId)}`, { method: 'DELETE' });
+            if (fallbackRes.ok) {
+              return { success: true };
+            }
+          } catch {
+            // ignore
+          }
+          set({ users: previousUsers });
+          return { success: false, error: 'Network error occurred while deleting user.' };
+        }
       },
 
       updateUserRole: (userId, newRole) => {
@@ -1126,16 +1220,18 @@ export const useAppStore = create<AppState>()(
               !currentPendingIds.has(u.id)
           );
 
-          const localUser = getLocalCurrentUser();
+          const activeUser = getLocalCurrentUser() || get().currentUser;
           let updatedCurrentUser = get().currentUser;
-          if (localUser) {
-            const match = mergedUsers.find((u) => u.id === localUser.id);
+          if (activeUser) {
+            const match = mergedUsers.find((u) => u.id === activeUser.id);
             if (match) {
               setLocalCurrentUser(match);
               updatedCurrentUser = match;
             } else {
+              // The active user's account has been permanently expunged
               removeLocalCurrentUser();
               updatedCurrentUser = null;
+              set({ isAccessRevoked: true });
             }
           }
 
@@ -1278,9 +1374,13 @@ export const useAppStore = create<AppState>()(
 
           // ⚠️ ALWAYS override super-admin entries with the hardcoded seed data.
           // This ensures passwords and roles stay in sync with the source code.
+          const deletedSet = new Set(Array.isArray((state as unknown as { deletedUserIds?: string[] }).deletedUserIds) ? (state as unknown as { deletedUserIds?: string[] }).deletedUserIds : []);
           const seedIds = new Set(SUPER_ADMIN_SEEDS.map(s => s.id));
-          const nonAdminUsers = state.users.filter(u => !seedIds.has(u.id));
-          state.users = [...SUPER_ADMIN_SEEDS, ...nonAdminUsers];
+          const nonAdminUsers = (state.users || []).filter(u => !seedIds.has(u.id) && !deletedSet.has(u.id));
+          state.users = [
+            ...SUPER_ADMIN_SEEDS.filter(s => s.email.toLowerCase() === 'admin@stark.edu' || !deletedSet.has(s.id)),
+            ...nonAdminUsers
+          ];
 
           // Ensure all hydrated users have isApproved field (backward compatibility)
           state.users = state.users.map(u => ({
@@ -1305,6 +1405,7 @@ export const useAppStore = create<AppState>()(
             } else {
               removeLocalCurrentUser();
               state.currentUser = null;
+              state.isAccessRevoked = true;
             }
           } else {
             state.currentUser = null;

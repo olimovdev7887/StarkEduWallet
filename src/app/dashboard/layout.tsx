@@ -7,6 +7,7 @@ import Sidebar from "@/components/Sidebar";
 import PageTransition from "@/components/PageTransition";
 import { useCrossDeviceSync } from "@/hooks/useCrossDeviceSync";
 import MiniMessageWidget from "@/components/MiniMessageWidget";
+import RevokedAccessModal from "@/components/RevokedAccessModal";
 
 export default function DashboardLayout({
   children,
@@ -14,6 +15,8 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const currentUser = useAppStore(state => state.currentUser);
+  const isAccessRevoked = useAppStore(state => state.isAccessRevoked);
+  const setAccessRevoked = useAppStore(state => state.setAccessRevoked);
   const _hasHydrated = useAppStore(state => state._hasHydrated);
   const performDailyReset = useAppStore(state => state.performDailyReset);
   const router = useRouter();
@@ -22,10 +25,10 @@ export default function DashboardLayout({
   useCrossDeviceSync();
 
   useEffect(() => {
-    if (_hasHydrated && !currentUser) {
+    if (_hasHydrated && !currentUser && !isAccessRevoked) {
       router.push("/login");
     }
-  }, [currentUser, _hasHydrated, router]);
+  }, [currentUser, _hasHydrated, isAccessRevoked, router]);
 
   // ── Daily auto-reset ────────────────────────────────────────────────
   useEffect(() => {
@@ -43,6 +46,17 @@ export default function DashboardLayout({
 
     return () => clearTimeout(timer);
   }, [_hasHydrated, performDailyReset]);
+
+  if (isAccessRevoked) {
+    return (
+      <RevokedAccessModal
+        onDismiss={() => {
+          setAccessRevoked(false);
+          router.push("/login");
+        }}
+      />
+    );
+  }
 
   if (!_hasHydrated || !currentUser) return null;
 

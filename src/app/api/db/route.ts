@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { getDbFilePath } from '@/lib/serverDb';
+import { getDbFilePath, deleteUserFromDb } from '@/lib/serverDb';
 import type { User, AppMessage } from '@/types';
 
 const noCacheHeaders = {
@@ -29,6 +29,39 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({ value: null }, { headers: noCacheHeaders });
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get('userId') || searchParams.get('id');
+
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, error: 'User ID is required' },
+        { status: 400, headers: noCacheHeaders }
+      );
+    }
+
+    const result = deleteUserFromDb(userId);
+    if (!result.success) {
+      return NextResponse.json(
+        { success: false, error: result.error || 'Failed to delete user' },
+        { status: 400, headers: noCacheHeaders }
+      );
+    }
+
+    return NextResponse.json(
+      { success: true, user: result.user, deletedUserId: userId },
+      { headers: noCacheHeaders }
+    );
+  } catch (error) {
+    console.error("DB DELETE Error:", error);
+    return NextResponse.json(
+      { success: false, error: 'Internal server error' },
+      { status: 500, headers: noCacheHeaders }
+    );
+  }
 }
 
 export async function POST(request: Request) {
@@ -63,6 +96,15 @@ export async function POST(request: Request) {
         }
 
         if (existingState && Array.isArray(existingState.users)) {
+          // Track all deletedUserIds so deleted users are permanently expunged and NEVER re-added
+          const existingDeletedIds = new Set<string>(
+            Array.isArray(existingState.deletedUserIds) ? (existingState.deletedUserIds as string[]) : []
+          );
+          const incomingDeletedIds = new Set<string>(
+            Array.isArray(incomingState.deletedUserIds) ? (incomingState.deletedUserIds as string[]) : []
+          );
+          const allDeletedIds = new Set([...existingDeletedIds, ...incomingDeletedIds]);
+
           // Merge users so that pending registrations in DB are never lost by stale client saves
           const incomingUsers: User[] = Array.isArray(incomingState.users) ? (incomingState.users as User[]) : [];
           const existingUsers: User[] = existingState.users as User[];
@@ -72,6 +114,9 @@ export async function POST(request: Request) {
 
           const mergedUsers = [...incomingUsers];
           for (const exUser of existingUsers) {
+            if (allDeletedIds.has(exUser.id)) {
+              continue; // Never restore an expunged user
+            }
             if (!incomingUserMap.has(exUser.id)) {
               // User exists in DB but not in incoming stale save: preserve them
               mergedUsers.push(exUser);
@@ -84,7 +129,12 @@ export async function POST(request: Request) {
               }
             }
           }
-          incomingState.users = mergedUsers;
+
+          // Filter to strictly ensure no deleted users remain (protect admin seed)
+          incomingState.users = mergedUsers.filter(
+            (u) => u.email.toLowerCase() === 'admin@stark.edu' || !allDeletedIds.has(u.id)
+          );
+          incomingState.deletedUserIds = Array.from(allDeletedIds);
 
           // Merge messages so that DB notifications and 'handled' statuses are never wiped out
           const incomingMessages: AppMessage[] = Array.isArray(incomingState.messages) ? (incomingState.messages as AppMessage[]) : [];
